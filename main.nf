@@ -2,9 +2,11 @@
 
 nextflow.enable.dsl = 2
 
-include { FASTQC } from './modules/nf-core/fastqc/main.nf'
+include { FASTQC as FASTQC_RAW_READS} from './modules/nf-core/fastqc/main.nf'
+include { FASTQC as FASTQC_TRIMMERED_READS  } from './modules/nf-core/fastqc/main.nf'
 include { TRIMMOMATIC } from './modules/nf-core/trimmomatic/main.nf'
-
+include { KALLISTO_INDEX } from './modules/nf-core/kallisto/index/main.nf' 
+include { KALLISTO_QUANT } from './modules/nf-core/kallisto/quant/main.nf'
 
 // WORKFLOW SPECIFICATION
 // --------------------------------------------------------------- //
@@ -20,11 +22,21 @@ workflow {
             [meta, fastq_file]
         }
 
+    kallisto_index_ch = Channel.of(tuple(params.transcriptome_name, params.transcriptome))
+
     // Workflow steps:
+    // Input: Fasta files of samples
     // FASTQC: Performs basic QC of the RNA samples. This step is totally independent, and can be executed inmediatelly at beggining
     // Then Trimmomatic starts QC of the samples
-    preprocess = FASTQC(samplesheet_ch)
+    // Then FastQC of the remaining reads
+    preprocess = FASTQC_RAW_READS(samplesheet_ch)
     Trimmomatic_result = TRIMMOMATIC(samplesheet_ch)
-    postprocess = FASTQ(Trimmomatic_result.out.trimmed_reads)
+    postprocess = FASTQC_TRIMMERED_READS(Trimmomatic_result.trimmed_reads)
+    
+    // Input: Transcriptome indexing
+    // Transcriptome must be indexed before running the quantification
+    k_index = KALLISTO_INDEX(kallisto_index_ch)
+
+    // Quantification: With reads and index we can start quantification
 
 }
