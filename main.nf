@@ -22,7 +22,10 @@ workflow {
             [meta, fastq_file]
         }
 
-    kallisto_index_ch = Channel.of(tuple(params.transcriptome_name, params.transcriptome))
+    kallisto_index_ch = Channel.of(tuple(params.transcriptome_name, params.transcriptome_fa))
+    kallisto_quant_gtf = Channel.of(params.transcriptome_gtf)
+    kallisto_quant_insert_length_ch = Channel.of(params.fragment_length)
+    kallisto_quant_insert_sd_ch = Channel.of(params.fragment_sd)
 
     // Workflow steps:
     // Input: Fasta files of samples
@@ -36,7 +39,9 @@ workflow {
     // Input: Transcriptome indexing
     // Transcriptome must be indexed before running the quantification
     k_index = KALLISTO_INDEX(kallisto_index_ch)
-
+    
     // Quantification: With reads and index we can start quantification
+    // TO DO: Implement chromosomes as a list of inputs from a file or sth
+    KALLISTO_QUANT(Trimmomatic_result.trimmed_reads, k_index.index, kallisto_quant_gtf , [], kallisto_quant_insert_length_ch, kallisto_quant_insert_sd_ch )
 
 }
