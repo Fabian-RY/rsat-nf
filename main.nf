@@ -7,6 +7,7 @@ include { FASTQC as FASTQC_TRIMMERED_READS  } from './modules/nf-core/fastqc/mai
 include { TRIMMOMATIC } from './modules/nf-core/trimmomatic/main.nf'
 include { KALLISTO_INDEX } from './modules/nf-core/kallisto/index/main.nf' 
 include { KALLISTO_QUANT } from './modules/nf-core/kallisto/quant/main.nf'
+include { MULTIQC } from './modules/nf-core/multiqc/main.nf'
 
 // WORKFLOW SPECIFICATION
 // --------------------------------------------------------------- //
@@ -43,5 +44,24 @@ workflow {
     // Quantification: With reads and index we can start quantification
     // TO DO: Implement chromosomes as a list of inputs from a file or sth
     KALLISTO_QUANT(Trimmomatic_result.trimmed_reads, k_index.index, kallisto_quant_gtf , [], kallisto_quant_insert_length_ch, kallisto_quant_insert_sd_ch )
+
+
+    // MULTIQC Final Report
+    ch_multiqc_files = Channel.empty()
+        .mix(
+            FASTQC_RAW_READS.out.zip.map { meta, zip -> zip },
+            FASTQC_RAW_READS.out.html.map { meta, html -> html },
+            FASTQC_TRIMMERED_READS.out.zip.map { meta, zip -> zip },
+            FASTQC_TRIMMERED_READS.out.html.map { meta, html -> html },
+            TRIMMOMATIC.out.trim_log.map { meta, log -> log },
+            TRIMMOMATIC.out.out_log.map { meta, log -> log },
+            TRIMMOMATIC.out.summary.map { meta, summary -> summary },
+            KALLISTO_QUANT.out.log.map { meta, log -> log },
+            KALLISTO_QUANT.out.json_info.map { meta, json -> json }
+        )
+        .collect()
+        .map { files -> [[id:'multiqc'], files, [], [], [], []] }
+
+    MULTIQC(ch_multiqc_files)
 
 }
