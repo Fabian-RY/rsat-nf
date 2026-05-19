@@ -8,10 +8,25 @@ include { TRIMMOMATIC } from './modules/nf-core/trimmomatic/main.nf'
 include { KALLISTO_INDEX } from './modules/nf-core/kallisto/index/main.nf' 
 include { KALLISTO_QUANT } from './modules/nf-core/kallisto/quant/main.nf'
 include { MULTIQC } from './modules/nf-core/multiqc/main.nf'
+include { DOWNLOAD_ORGANISM } from './modules/local/rsat-download-organisms/main.nf'
+include { RANDOM_GENES } from './modules/local/rsat-random-genes/main.nf'
+
 
 // WORKFLOW SPECIFICATION
 // --------------------------------------------------------------- //
 workflow {
+
+
+    // Checks to download the organism or not
+    if (params.download_organism){
+        download_result = DOWNLOAD_ORGANISM(params.server, params.organism)
+        def organism_downloaded = download_result.map {org, server -> org}
+    }
+    // Random Gene selection without download
+    genes = RANDOM_GENES(params.number, params.organism, params.feature_type)
+    
+
+    sequences = RETRIEVE_SEQUENCES
 
     // input channels
     samplesheet_ch = Channel.fromPath(params.samplesheet)
@@ -23,7 +38,7 @@ workflow {
             [meta, fastq_file]
         }
 
-    kallisto_index_ch = Channel.of(tuple(params.transcriptome_name, params.transcriptome_fa))
+    kallisto_index_ch = Channel.of(tuple(params.organism, params.transcriptome_fa))
     kallisto_quant_gtf = Channel.of(params.transcriptome_gtf)
     kallisto_quant_insert_length_ch = Channel.of(params.fragment_length)
     kallisto_quant_insert_sd_ch = Channel.of(params.fragment_sd)
@@ -36,7 +51,7 @@ workflow {
     preprocess = FASTQC_RAW_READS(samplesheet_ch)
     Trimmomatic_result = TRIMMOMATIC(samplesheet_ch)
     postprocess = FASTQC_TRIMMERED_READS(Trimmomatic_result.trimmed_reads)
-    
+
     // Input: Transcriptome indexing
     // Transcriptome must be indexed before running the quantification
     k_index = KALLISTO_INDEX(kallisto_index_ch)
@@ -44,7 +59,6 @@ workflow {
     // Quantification: With reads and index we can start quantification
     // TO DO: Implement chromosomes as a list of inputs from a file or sth
     KALLISTO_QUANT(Trimmomatic_result.trimmed_reads, k_index.index, kallisto_quant_gtf , [], kallisto_quant_insert_length_ch, kallisto_quant_insert_sd_ch )
-
 
     // MULTIQC Final Report
     ch_multiqc_files = Channel.empty()
@@ -61,7 +75,6 @@ workflow {
         )
         .collect()
         .map { files -> [[id:'multiqc'], files, [], [], [], []] }
-
     MULTIQC(ch_multiqc_files)
 
 }
