@@ -15,6 +15,12 @@ include { RETRIEVE_SEQUENCES as RETRIEVE_RANDOM_SEQUENCES } from './modules/loca
 include { RETRIEVE_ALL_SEQUENCES } from './modules/local/rsat-retrieve-sequences/main.nf'
 include { PURGE_SEQUENCES } from './modules/local/rsat-purge-sequences/main.nf'
 include { DYAD } from './modules/local/rsat-dyad-analysis/main.nf'
+include { OLIGO } from './modules/local/rsat-oligo-analysis/main.nf'
+include { PEAK_MOTIFS as PEAK_MOTIFS_DYAD} from './modules/local/rsat-peak-motifs/main.nf'
+include { PEAK_MOTIFS as PEAK_MOTIFS_OLIGO} from './modules/local/rsat-peak-motifs/main.nf'
+include { MATRIX_SCAN as MATRIX_SCAN_DYAD } from './modules/local/rsat-matrix-scan/main.nf'
+include { MATRIX_SCAN as MATRIX_SCAN_OLIGO } from './modules/local/rsat-matrix-scan/main.nf'
+
 
 
 // WORKFLOW SPECIFICATION
@@ -61,8 +67,12 @@ workflow {
                 params.feature_type, params.retrieve_seq_type, params.retrieve_seq_format, params.retrieve_seq_label, params.retrieve_seq_from,
                 params.retrieve_seq_to)
         purged_sequences = PURGE_SEQUENCES(sequences, params.retrieve_seq_format)
-        DYAD(purged_sequences, params.organism)
-        
+        dyad_ch = DYAD(purged_sequences, params.organism)
+        oligo_ch = OLIGO(purged_sequences, params.organism)
+        pk_dyad_ch = PEAK_MOTIFS_DYAD(dyad_ch, module_sequences)
+        pk_oligo_ch = PEAK_MOTIFS_OLIGO(oligo_ch, module_sequences)
+        MATRIX_SCAN_DYAD(pk_dyad_ch, params.organism)
+        MATRIX_SCAN_OLIGO(pk_oligo_ch, params.organism)
     }
 
 
