@@ -1,12 +1,14 @@
-process MATRIXSCAN {
+process MATRIX_SCAN {
     
-    input:
+    container "biocontainers/rsat:2025-03-26_cv1"
 
-    output:
+    input:
+    tuple val(meta), path(input)
+    val organism
 
     script:
     """
-
+    echo "test matrix_scan"
     """
 
 }

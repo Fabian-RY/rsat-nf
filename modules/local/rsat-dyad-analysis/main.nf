@@ -7,7 +7,7 @@ process DYAD{
     val organism
 
     output:
-    tuple val(meta), path("*.txt")
+    tuple val(meta), path("*.txt")       
 
     script:
     """
