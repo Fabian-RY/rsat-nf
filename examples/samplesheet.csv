@@ -1,0 +1,8 @@
+sample_id,fastq
+SRR1736517,./samples/SRR1736517.fastq.gz 
+SRR1736518,./samples/SRR1736518.fastq.gz 
+SRR1736519,./samples/SRR1736519.fastq.gz 
+SRR1736520,./samples/SRR1736520.fastq.gz 
+SRR1736522,./samples/SRR1736522.fastq.gz 
+SRR1736524,./samples/SRR1736524.fastq.gz
+SRR1736525,./samples/SRR1736525.fastq.gz
