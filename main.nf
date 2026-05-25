@@ -12,14 +12,13 @@ include { DOWNLOAD_ORGANISM } from './modules/local/rsat-download-organisms/main
 include { RANDOM_GENES } from './modules/local/rsat-random-genes/main.nf'
 include { RETRIEVE_SEQUENCES } from './modules/local/rsat-retrieve-sequences/main.nf'
 include { RETRIEVE_SEQUENCES as RETRIEVE_RANDOM_SEQUENCES } from './modules/local/rsat-retrieve-sequences/main.nf'
-include { RETRIEVE_ALL_SEQUENCES } from './modules/local/rsat-retrieve-sequences/main.nf'
+include { RETRIEVE_GENOME_SEQUENCES } from './modules/local/rsat-retrieve-sequences/main.nf'
 include { PURGE_SEQUENCES } from './modules/local/rsat-purge-sequences/main.nf'
 include { DYAD } from './modules/local/rsat-dyad-analysis/main.nf'
 include { OLIGO } from './modules/local/rsat-oligo-analysis/main.nf'
-include { PEAK_MOTIFS as PEAK_MOTIFS_DYAD} from './modules/local/rsat-peak-motifs/main.nf'
-include { PEAK_MOTIFS as PEAK_MOTIFS_OLIGO} from './modules/local/rsat-peak-motifs/main.nf'
-include { MATRIX_SCAN as MATRIX_SCAN_DYAD } from './modules/local/rsat-matrix-scan/main.nf'
-include { MATRIX_SCAN as MATRIX_SCAN_OLIGO } from './modules/local/rsat-matrix-scan/main.nf'
+include { PEAK_MOTIFS} from './modules/local/rsat-peak-motifs/main.nf'
+include { PEAK_MOTIFS_RANDOM} from './modules/local/rsat-peak-motifs/main.nf'
+
 
 
 
@@ -37,6 +36,16 @@ workflow {
             [meta, module]    
         }
 
+    background_ch = Channel.fromPath(params.background_sheet)
+        .ifEmpty { "Error: No samples found in: ${params.background_sheet}"}
+        .splitCsv(header: true)
+        .map { row -> 
+            def meta = [id: row.id.trim()]
+            def from = row.from.trim()
+            def to = row.to.trim()
+            [meta, from, to]    
+        }
+
 
     all_genes = Channel.of(tuple(params.organism, "-all"))
 
@@ -50,85 +59,45 @@ workflow {
         //        params.retrieve_seq_to)
     }
     else {
-        // Random Gene selection without download
+
+        ///////////////
+        //
+        // First part of pipeline: Retrieving sequences
+        //
+        // We need to retrieve: 
+        // - Background sequences 
+        // - Motif Sequences 
+        // - Random sequences
+
+
+        // Retrieve all background sequences
+        background_sequences = RETRIEVE_GENOME_SEQUENCES(params.organism, background_ch,
+                params.retrieve_seq_type, params.feature_type, params.retrieve_seq_format, params.retrieve_seq_label, background_ch)
+        
+        
+        combinations_ch = modules_ch.combine(background_ch)
+        // Retrieve module sequences in this boundaries
+        regulon_sequences = RETRIEVE_SEQUENCES(params.organism, combinations_ch, params.retrieve_seq_output,
+                                    params.feature_type, params.retrieve_seq_type, params.retrieve_seq_format, params.retrieve_seq_label)
+        // Generate random modules and Retrieve random modules
         n_clusters_ch = Channel
                         .from(1..params.clusters)
                         .each {
                             i -> "random_cluster_${1}"
                         }
-        all_sequences = RETRIEVE_ALL_SEQUENCES(params.organism, params.retrieve_seq_output,
-                params.feature_type, params.retrieve_seq_type, params.retrieve_seq_format, params.retrieve_seq_label, params.retrieve_seq_from,
-                params.retrieve_seq_to)
         clusters = RANDOM_GENES(n_clusters_ch, params.number, params.organism, params.feature_type)         
-        module_sequences = RETRIEVE_RANDOM_SEQUENCES(params.organism, clusters.outfile, params.retrieve_seq_output,
-                params.feature_type, params.retrieve_seq_type, params.retrieve_seq_format, params.retrieve_seq_label, params.retrieve_seq_from,
-                params.retrieve_seq_to)
-        sequences = RETRIEVE_SEQUENCES(params.organism, modules_ch, params.retrieve_seq_output,
-                params.feature_type, params.retrieve_seq_type, params.retrieve_seq_format, params.retrieve_seq_label, params.retrieve_seq_from,
-                params.retrieve_seq_to)
-        purged_sequences = PURGE_SEQUENCES(sequences, params.retrieve_seq_format)
-        dyad_ch = DYAD(purged_sequences, params.organism)
-        oligo_ch = OLIGO(purged_sequences, params.organism)
-        pk_dyad_ch = PEAK_MOTIFS_DYAD(dyad_ch, module_sequences)
-        pk_oligo_ch = PEAK_MOTIFS_OLIGO(oligo_ch, module_sequences)
-        MATRIX_SCAN_DYAD(pk_dyad_ch, params.organism)
-        MATRIX_SCAN_OLIGO(pk_oligo_ch, params.organism)
-    }
+        random_combinations = clusters.combine(background_ch)
+        random_sequences = RETRIEVE_RANDOM_SEQUENCES(params.organism, random_combinations, params.retrieve_seq_output,
+                params.feature_type, params.retrieve_seq_type, params.retrieve_seq_format, params.retrieve_seq_label)
 
-
-    if(params.preprocess_samples){
-
-        // input channels
-        samplesheet_ch = Channel.fromPath(params.samplesheet)
-            .ifEmpty { error "Error: No samples found in: ${params.samplesheet}"}
-            .splitCsv(header: true)
-            .map { row ->
-                def meta = [id: row.sample_id.trim(), single_end: true]
-                def fastq_file = file(row.fastq.trim())
-                [meta, fastq_file]
-            }
-
-        kallisto_index_ch = Channel.of(tuple(params.organism, params.transcriptome_fa))
-        kallisto_quant_gtf = Channel.of(params.transcriptome_gtf)
-        kallisto_quant_insert_length_ch = Channel.of(params.fragment_length)
-        kallisto_quant_insert_sd_ch = Channel.of(params.fragment_sd)
-
-        // Workflow steps:
-        // Input: Fasta files of samples
-        // FASTQC: Performs basic QC of the RNA samples. This step is totally independent, and can be executed inmediatelly at beggining
-        // Then Trimmomatic starts QC of the samples
-        // Then FastQC of the remaining reads
-        preprocess = FASTQC_RAW_READS(samplesheet_ch)
-        Trimmomatic_result = TRIMMOMATIC(samplesheet_ch)
-        postprocess = FASTQC_TRIMMERED_READS(Trimmomatic_result.trimmed_reads)
-
-        // Input: Transcriptome indexing
-        // Transcriptome must be indexed before running the quantification
-        k_index = KALLISTO_INDEX(kallisto_index_ch)
+        /////////////////////////////////////////////
+        //
+        // PEAK MOTIFS
+        //
+        /////////////////////////////////////////////
         
-        // Quantification: With reads and index we can start quantification
-        // TO DO: Implement chromosomes as a list of inputs from a file or sth
-        KALLISTO_QUANT(Trimmomatic_result.trimmed_reads, k_index.index, kallisto_quant_gtf , [], kallisto_quant_insert_length_ch, kallisto_quant_insert_sd_ch )
-
+        PEAK_MOTIFS(regulon_sequences, background_sequences, "footDB", "/packages/rsat/public_html/motif_databases/footprintDB/footprintDB.plants.motif.tf")
+        PEAK_MOTIFS_RANDOM(random_sequences.combine(background_sequences) ,"footDB", "/packages/rsat/public_html/motif_databases/footprintDB/footprintDB.plants.motif.tf")
     }
-    
-    if(params.preprocess_samples){
 
-        // MULTIQC Final Report
-        ch_multiqc_files = Channel.empty()
-            .mix(
-                FASTQC_RAW_READS.out.zip.map { meta, zip -> zip },
-                FASTQC_RAW_READS.out.html.map { meta, html -> html },
-                FASTQC_TRIMMERED_READS.out.zip.map { meta, zip -> zip },
-                FASTQC_TRIMMERED_READS.out.html.map { meta, html -> html },
-                TRIMMOMATIC.out.trim_log.map { meta, log -> log },
-                TRIMMOMATIC.out.out_log.map { meta, log -> log },
-                TRIMMOMATIC.out.summary.map { meta, summary -> summary },
-                KALLISTO_QUANT.out.log.map { meta, log -> log },
-                KALLISTO_QUANT.out.json_info.map { meta, json -> json }
-            )
-            .collect()
-            .map { files -> [[id:'multiqc'], files, [], [], [], []] }
-        MULTIQC(ch_multiqc_files)
-    }
 }
