@@ -13,11 +13,12 @@ include { RANDOM_GENES } from './modules/local/rsat-random-genes/main.nf'
 include { RETRIEVE_SEQUENCES } from './modules/local/rsat-retrieve-sequences/main.nf'
 include { RETRIEVE_SEQUENCES as RETRIEVE_RANDOM_SEQUENCES } from './modules/local/rsat-retrieve-sequences/main.nf'
 include { RETRIEVE_GENOME_SEQUENCES } from './modules/local/rsat-retrieve-sequences/main.nf'
+include { REPEAT_CHANNEL_SEQUENCES } from './modules/local/rsat-retrieve-sequences/main.nf'
 include { PURGE_SEQUENCES } from './modules/local/rsat-purge-sequences/main.nf'
 include { DYAD } from './modules/local/rsat-dyad-analysis/main.nf'
 include { OLIGO } from './modules/local/rsat-oligo-analysis/main.nf'
 include { PEAK_MOTIFS} from './modules/local/rsat-peak-motifs/main.nf'
-include { PEAK_MOTIFS_RANDOM} from './modules/local/rsat-peak-motifs/main.nf'
+include { PEAK_MOTIFS as PEAK_MOTIFS_RANDOM } from './modules/local/rsat-peak-motifs/main.nf'
 
 
 
@@ -95,9 +96,20 @@ workflow {
         // PEAK MOTIFS
         //
         /////////////////////////////////////////////
-        
-        PEAK_MOTIFS(regulon_sequences, background_sequences, "footDB", "/packages/rsat/public_html/motif_databases/footprintDB/footprintDB.plants.motif.tf")
-        PEAK_MOTIFS_RANDOM(random_sequences.combine(background_sequences) ,"footDB", "/packages/rsat/public_html/motif_databases/footprintDB/footprintDB.plants.motif.tf")
+
+
+        // This has been a bit of a headache: Background_sequences has 4 elements
+        // And I need to combine them 1 to 1 with the module and random sequences
+        // So each module from_X_to_Y is executed with its correcponding background
+        // By using combine with the key the from-to we have one channel with the
+        // correct combination. 
+        // Peak motifs recives a 5-element tuple
+        module_with_bg = regulon_sequences.combine(background_sequences, by: 2)
+        random_with_bg = random_sequences.combine(background_sequences, by: 2)
+
+
+        PEAK_MOTIFS(module_with_bg ,"footDB", "/packages/rsat/public_html/motif_databases/footprintDB/footprintDB.plants.motif.tf")
+        PEAK_MOTIFS_RANDOM(random_with_bg ,"footDB", "/packages/rsat/public_html/motif_databases/footprintDB/footprintDB.plants.motif.tf")
     }
 
 }
