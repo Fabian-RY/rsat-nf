@@ -19,9 +19,8 @@ include { DYAD } from './modules/local/rsat-dyad-analysis/main.nf'
 include { OLIGO } from './modules/local/rsat-oligo-analysis/main.nf'
 include { PEAK_MOTIFS} from './modules/local/rsat-peak-motifs/main.nf'
 include { PEAK_MOTIFS as PEAK_MOTIFS_RANDOM } from './modules/local/rsat-peak-motifs/main.nf'
-
-
-
+include { MATRIX_SCAN } from './modules/local/rsat-matrix-scan/main.nf'
+include { MATRIX_SCAN as MATRIX_SCAN_RANDOM } from './modules/local/rsat-matrix-scan/main.nf'
 
 // WORKFLOW SPECIFICATION
 // --------------------------------------------------------------- //
@@ -103,13 +102,25 @@ workflow {
         // So each module from_X_to_Y is executed with its correcponding background
         // By using combine with the key the from-to we have one channel with the
         // correct combination. 
-        // Peak motifs recives a 5-element tuple
+        // Peak motifs recives a 5-element tuple in consequence so this can be 
+        // used directly as input
         module_with_bg = regulon_sequences.combine(background_sequences, by: 2)
         random_with_bg = random_sequences.combine(background_sequences, by: 2)
 
 
-        PEAK_MOTIFS(module_with_bg ,"footDB", "/packages/rsat/public_html/motif_databases/footprintDB/footprintDB.plants.motif.tf")
-        PEAK_MOTIFS_RANDOM(random_with_bg ,"footDB", "/packages/rsat/public_html/motif_databases/footprintDB/footprintDB.plants.motif.tf")
+        dpm = PEAK_MOTIFS(module_with_bg ,"footDB", "/packages/rsat/public_html/motif_databases/footprintDB/footprintDB.plants.motif.tf")
+        rpm = PEAK_MOTIFS_RANDOM(random_with_bg ,"footDB", "/packages/rsat/public_html/motif_databases/footprintDB/footprintDB.plants.motif.tf")
+
+        // We turn the results of PEAK_MOTIFS to MATRIX_SCAN
+        // We combine them to be given as input to MATRIX_SCAN, and 
+        // transpose them: PEAK_MOTIFS returns all 5 matrices in an array 
+        // but each needs their own execution. Transpose turns the channel
+        // from [a,b, [c*n times], d] to n elements of shape [a,b,c',d]
+        sequences = dpm.combine(background_sequences.seqs, by: 2).transpose()
+        r_sequences = rpm.combine(background_sequences.seqs, by: 2).transpose()
+
+        MATRIX_SCAN(sequences, params.pvalue )
+        MATRIX_SCAN_RANDOM(r_sequences, params.pvalue)
     }
 
 }

@@ -8,7 +8,7 @@ process PEAK_MOTIFS{
     val footdbfile
 
     output:
-    tuple val(meta), val(from_to), emit: outdir
+    tuple val(meta), path("*_outdir/results/discovered_motifs/*_m*/*.tf"), val(from_to), emit: outdir
 
     script:
     """
@@ -26,7 +26,8 @@ process PEAK_MOTIFS_RANDOM{
     val footdbfile
 
     output:
-    tuple val(meta), path("*.pk"), emit: outdir
+    tuple val(meta), path("*_outdir/results/discovered_motifs/*_m*/*.tf"), val(from_to), emit: outdir
+
 
     script:
     """
